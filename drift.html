@@ -619,12 +619,38 @@ add(new THREE.BoxGeometry(1.7, 0.07, 0.12), dark, 0, 1.5, 0.98, cockpit);       
   add(new THREE.BoxGeometry(0.08, 0.26, 1.3), dark, sx * 0.9, 0.84, -0.05, cockpit);   // door tops
 });
 add(new THREE.BoxGeometry(0.3, 0.09, 0.04), new THREE.MeshStandardMaterial({ color: 0x151a26, metalness: 0.9, roughness: 0.1 }), 0, 1.4, 0.9, cockpit);  // mirror
-const wheelGrp = new THREE.Group(); wheelGrp.position.set(0.38, 0.97, 0.66); wheelGrp.rotation.x = 0.5; wheelGrp.scale.setScalar(0.85); cockpit.add(wheelGrp);
+const wheelGrp = new THREE.Group(); wheelGrp.position.set(0.38, 0.93, 0.5); wheelGrp.rotation.x = 0.95; wheelGrp.scale.setScalar(1.2); cockpit.add(wheelGrp);
 const swheel = new THREE.Group(); wheelGrp.add(swheel);
 swheel.add(new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 8, 28), dark));
 swheel.add(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.02), dark));
 const sp = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.17, 0.02), dark); sp.position.y = -0.085; swheel.add(sp);
 const topMark = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.04, 0.03), new THREE.MeshBasicMaterial({ color: 0xff2d95 })); topMark.position.y = 0.17; swheel.add(topMark);
+/* hands on the wheel (turn with it) + forearms that follow them */
+const skinMat = new THREE.MeshStandardMaterial({ color: 0xc98f6a, roughness: 0.65 });
+const gloveMat = new THREE.MeshStandardMaterial({ color: 0x15161e, roughness: 0.5, metalness: 0.1 });
+const sleeveMat = new THREE.MeshStandardMaterial({ color: 0x1a1d2c, roughness: 0.8 });
+const hands = [], arms = [];
+[-1, 1].forEach(side => {
+  const hand = new THREE.Group(); hand.position.set(side * 0.158, 0.07, 0); hand.rotation.z = -side * 0.35; hand.scale.setScalar(1.25); swheel.add(hand);
+  const palm = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.1, 0.07), gloveMat); hand.add(palm);
+  const grip = new THREE.Mesh(new THREE.CapsuleGeometry(0.017, 0.075, 4, 8), gloveMat); grip.rotation.z = Math.PI / 2; grip.position.set(-side * 0.012, 0, 0.045); hand.add(grip);   // fingers wrapping the rim
+  const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.014, 0.04, 4, 6), gloveMat); thumb.position.set(0, 0.03, -0.045); thumb.rotation.x = 0.5; hand.add(thumb);
+  const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.012, 0.012), new THREE.MeshBasicMaterial({ color: 0x00e5ff })); knuckle.position.set(0, 0.052, 0.01); hand.add(knuckle);
+  const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.04, 8), skinMat); wrist.position.set(0, -0.06, 0); hand.add(wrist);
+  hands.push(hand);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.052, 1, 10), sleeveMat); cockpit.add(arm); arms.push({ arm, side });
+});
+const _hp = new THREE.Vector3(), _sp = new THREE.Vector3(), _dir = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+function updateArms() {
+  swheel.updateMatrixWorld(true); cockpit.updateMatrixWorld(true);
+  arms.forEach(({ arm, side }, i) => {
+    _hp.set(0, -0.06, 0); hands[i].localToWorld(_hp); cockpit.worldToLocal(_hp);       // wrist in cockpit space
+    _sp.set(0.38 + side * 0.3, 0.55, -0.25);                                           // shoulder / elbow area
+    _dir.subVectors(_hp, _sp); const len = _dir.length();
+    arm.position.copy(_sp).addScaledVector(_dir, 0.5); arm.scale.set(0.8, len, 0.8);
+    arm.quaternion.setFromUnitVectors(_up, _dir.normalize());
+  });
+}
 const gaugeC = document.createElement('canvas'); gaugeC.width = 256; gaugeC.height = 128;
 const gaugeCtx = gaugeC.getContext('2d'), gaugeTex = canvasTex(gaugeC, false);
 const gauge = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.18), new THREE.MeshBasicMaterial({ map: gaugeTex }));
@@ -1171,7 +1197,7 @@ function updateVisuals(dt, inp) {
     const sr = Math.sin(car.roll * 0.6), cr = Math.cos(car.roll * 0.6);
     camera.up.set(-sr * Math.cos(car.h), cr, sr * Math.sin(car.h));
     camera.lookAt(camera.position.x + Math.sin(ya) * 10, camera.position.y - car.pitch * 6 - 0.15, camera.position.z + Math.cos(ya) * 10);
-    swheel.rotation.z = -car.steer * 1.5;
+    swheel.rotation.z = -car.steer * 1.5; updateArms();
     const fovF = 74 + speed * 0.38 + (car.boosting ? 12 : 0);
     if (Math.abs(camera.fov - fovF) > 0.05) { camera.fov += (fovF - camera.fov) * Math.min(1, dt * 5); camera.updateProjectionMatrix(); }
     gaugeT += dt; if (gaugeT > 0.08) {
