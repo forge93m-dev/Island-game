@@ -1,9 +1,261 @@
-(()=>{'use strict';const $=s=>document.querySelector(s),slot='quiet-island-3d-v1';let renderer;try{renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'low-power'});}catch(e){$('#error').textContent='Не удалось запустить WebGL. Открой игру в Safari и перезагрузи страницу.';return}renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.setClearColor(0x9ebfc1);document.body.prepend(renderer.domElement);const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,180);camera.rotation.order='YXZ';scene.fog=new THREE.Fog(0x9ebfc1,35,125);const ambient=new THREE.HemisphereLight(0xdcead8,0x3a4a39,2.2),sun=new THREE.DirectionalLight(0xffe6b3,2);sun.position.set(30,70,20);scene.add(ambient,sun);const mat=(c)=>new THREE.MeshLambertMaterial({color:c,flatShading:true});const mats={sand:mat(0xc4b987),grass:mat(0x6b8452),wood:mat(0x785440),leaf:mat(0x365e45),leaf2:mat(0x477353),rock:mat(0x929b94),berry:mat(0xc46668),dark:mat(0x263844),eye:new THREE.MeshBasicMaterial({color:0xf4b98a}),flame:new THREE.MeshBasicMaterial({color:0xffad4f})};function mesh(geo,m,x=0,y=0,z=0,parent=scene){let o=new THREE.Mesh(geo,m);o.position.set(x,y,z);parent.add(o);return o}mesh(new THREE.PlaneGeometry(1500,1500),new THREE.MeshBasicMaterial({color:0x527f8b}),0,-.28).rotation.x=-Math.PI/2;mesh(new THREE.CylinderGeometry(59,62,1,60),mats.sand,0,-.55);mesh(new THREE.CylinderGeometry(53,55,.6,48),mats.grass,0,-.25);const resourceGroup=new THREE.Group(),fireGroup=new THREE.Group(),enemyGroup=new THREE.Group();scene.add(resourceGroup,fireGroup,enemyGroup);let state,active=false,yaw=0,pitch=0,keys={},stick={x:0,y:0},cooldown=0,spawn=0,saveTimer=0,noteTimer=0,timePrev=0;const range=3.8;function fresh(){let nodes=[];for(let i=0;i<110;i++){let a=Math.random()*Math.PI*2,r=8+Math.sqrt(Math.random())*42;nodes.push({x:Math.sin(a)*r,z:Math.cos(a)*r,type:i%7===0?'berry':i%3===0?'rock':'tree',hp:4})}return{version:1,x:0,z:6,hp:100,food:100,wood:0,stone:0,berries:3,time:0,nodes,fires:[],won:false}}try{state=JSON.parse(localStorage.getItem(slot));if(!state||state.version!==1||!Array.isArray(state.nodes))state=fresh()}catch{state=fresh()}function save(){try{localStorage.setItem(slot,JSON.stringify(state))}catch{}}let resources=[],fires=[],enemies=[];const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);function nodeObject(n){let g=new THREE.Group();g.position.set(n.x,0,n.z);if(n.type==='tree'){mesh(new THREE.CylinderGeometry(.24,.4,3,5),mats.wood,0,1.5,0,g);mesh(new THREE.ConeGeometry(1.9,3.6,6),mats.leaf,0,3.6,0,g);mesh(new THREE.ConeGeometry(1.4,2.8,6),mats.leaf2,0,5.1,0,g)}else if(n.type==='rock'){let m=mesh(new THREE.IcosahedronGeometry(1,0),mats.rock,0,.6,0,g);m.scale.set(1.2,.8,1)}else{mesh(new THREE.IcosahedronGeometry(.9,0),mats.leaf2,0,.65,0,g);for(let i=0;i<5;i++)mesh(new THREE.IcosahedronGeometry(.13,0),mats.berry,Math.sin(i*3)*.7,.9+Math.cos(i)*.25,Math.cos(i*3)*.7,g)}resourceGroup.add(g);return{data:n,obj:g}}
-function fireObject(f){let g=new THREE.Group();g.position.set(f.x,0,f.z);for(let i=0;i<7;i++)mesh(new THREE.DodecahedronGeometry(.25),mats.rock,Math.sin(i)*.7,.15,Math.cos(i)*.7,g);mesh(new THREE.ConeGeometry(.45,1.25,5),mats.flame,0,.65,0,g);let light=new THREE.PointLight(0xffb858,3.5,14,1.5);light.position.y=1.5;g.add(light);fireGroup.add(g);return{data:f,obj:g}}
-function clearGroup(g){while(g.children.length){let c=g.children[0];g.remove(c);c.traverse(o=>{if(o.geometry)o.geometry.dispose()})}}function rebuild(){clearGroup(resourceGroup);clearGroup(fireGroup);clearGroup(enemyGroup);resources=state.nodes.map(nodeObject);fires=state.fires.map(fireObject);enemies=[];yaw=0;pitch=0}rebuild();function note(t){$('#note').textContent=t;noteTimer=4}function night(){return state.time%150>=95}function target(){let best=null,score=Infinity;const forward=new THREE.Vector3();camera.getWorldDirection(forward);for(let r of [...resources,...enemies]){let d=distance(state,r.data);if(d>range)continue;let v=new THREE.Vector3(r.data.x-state.x,(r.data.type==='tree'?1.7:.8)-1.65,r.data.z-state.z).normalize(),dot=v.dot(forward);if(dot>.72&&d<score){score=d;best=r}}return best}function action(){if(!active||cooldown>0)return;cooldown=.45;let r=target();if(!r){note('Подойди ближе и наведи прицел на объект');return}r.data.hp--;if(r.data.type==='enemy'){r.obj.position.x+=Math.sin(yaw)*.35;r.obj.position.z+=Math.cos(yaw)*.35;note('Удар!');if(r.data.hp<=0){enemyGroup.remove(r.obj);enemies.splice(enemies.indexOf(r),1)}return}if(r.data.type==='tree'){state.wood+=2;note('+2 дерева')}else if(r.data.type==='rock'){state.stone+=2;note('+2 камня')}else{state.berries+=2;note('+2 ягоды')}r.obj.rotation.z=.07;setTimeout(()=>r.obj.rotation.z=0,130);if(r.data.hp<=0){resourceGroup.remove(r.obj);resources.splice(resources.indexOf(r),1);state.nodes.splice(state.nodes.indexOf(r.data),1)}save()}
-$('#act').onclick=action;$('#eat').onclick=()=>{if(!active)return;if(!state.berries){note('Найди куст с красными ягодами');return}state.berries--;state.food=Math.min(100,state.food+30);state.hp=Math.min(100,state.hp+10);note('Сытость +30 · здоровье +10');save()};$('#fire').onclick=()=>{if(!active)return;if(state.wood<8||state.stone<4){note('Нужно 8 дерева и 4 камня');return}if(fires.length>=5){note('На острове уже горят пять костров');return}let f={x:state.x-Math.sin(yaw)*2.7,z:state.z-Math.cos(yaw)*2.7};if(Math.hypot(f.x,f.z)>51||resources.some(r=>distance(f,r.data)<1.5)||fires.some(r=>distance(f,r.data)<3)){note('Нужно свободное место перед тобой');return}state.wood-=8;state.stone-=4;state.fires.push(f);fires.push(fireObject(f));note('Костёр защищает в радиусе 8 шагов');save()};function menu(title,body){active=false;stick={x:0,y:0};keys={};$('#knob').style.transform='';$('#menu').style.display='grid';$('#menu h2').textContent=title;if(body)$('#intro').textContent=body;$('#start').textContent=state.hp<=0?'Попробовать снова':'Продолжить';save()}$('#pause').onclick=()=>menu('ПАУЗА');$('#start').onclick=()=>{if(state.hp<=0){state=fresh();rebuild()}active=true;$('#menu').style.display='none';timePrev=performance.now()};$('#new').onclick=()=>{if(confirm('Начать новый остров? Прогресс будет удалён.')){state=fresh();rebuild();save();active=true;$('#menu').style.display='none'}};document.addEventListener('visibilitychange',()=>{if(document.hidden&&active)menu('ПАУЗА')});addEventListener('pagehide',save);
-let joyId=null,lookId=null,lx=0,ly=0;$('#joy').addEventListener('pointerdown',e=>{e.preventDefault();joyId=e.pointerId;$('#joy').setPointerCapture(joyId);moveJoy(e)});function moveJoy(e){if(e.pointerId!==joyId)return;let r=$('#joy').getBoundingClientRect(),x=e.clientX-r.left-r.width/2,y=e.clientY-r.top-r.height/2,l=Math.hypot(x,y),max=32;if(l>max){x*=max/l;y*=max/l}stick={x:x/max,y:y/max};$('#knob').style.transform=`translate(${x}px,${y}px)`}$('#joy').onpointermove=moveJoy;$('#joy').onpointerup=$('#joy').onpointercancel=()=>{joyId=null;stick={x:0,y:0};$('#knob').style.transform=''};renderer.domElement.onpointerdown=e=>{if(!active||lookId!==null)return;lookId=e.pointerId;lx=e.clientX;ly=e.clientY;renderer.domElement.setPointerCapture(lookId)};renderer.domElement.onpointermove=e=>{if(e.pointerId!==lookId||!active)return;yaw-=(e.clientX-lx)*.005;pitch=Math.max(-1.15,Math.min(1.15,pitch-(e.clientY-ly)*.004));lx=e.clientX;ly=e.clientY};renderer.domElement.onpointerup=renderer.domElement.onpointercancel=()=>lookId=null;addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'){e.preventDefault();action()}if(e.code==='Escape'&&active)menu('ПАУЗА')});addEventListener('keyup',e=>keys[e.code]=false);addEventListener('blur',()=>{if(active)menu('ПАУЗА')});addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()});
-function enemy(){let a=Math.random()*Math.PI*2,r=16+Math.random()*6,x=state.x+Math.sin(a)*r,z=state.z+Math.cos(a)*r;if(Math.hypot(x,z)>52)return;let data={x,z,hp:3,type:'enemy'},g=new THREE.Group();mesh(new THREE.BoxGeometry(.8,1.2,.6),mats.dark,0,.9,0,g);mesh(new THREE.BoxGeometry(.65,.6,.65),mats.dark,0,1.8,0,g);mesh(new THREE.BoxGeometry(.43,.09,.04),mats.eye,0,1.88,-.34,g);g.position.set(x,0,z);enemyGroup.add(g);enemies.push({data,obj:g})}
-function update(dt){state.time+=dt;cooldown=Math.max(0,cooldown-dt);let x=stick.x+(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0),z=stick.y+(keys.KeyS||keys.ArrowDown?1:0)-(keys.KeyW||keys.ArrowUp?1:0),len=Math.max(1,Math.hypot(x,z)),dx=(x*Math.cos(yaw)+z*Math.sin(yaw))/len*4.4*dt,dz=(-x*Math.sin(yaw)+z*Math.cos(yaw))/len*4.4*dt;function free(x,z){return Math.hypot(x,z)<57&&!resources.some(r=>r.data.type!=='berry'&&Math.hypot(x-r.data.x,z-r.data.z)<(r.data.type==='tree'?.65:1.15))}if(free(state.x+dx,state.z))state.x+=dx;if(free(state.x,state.z+dz))state.z+=dz;state.food=Math.max(0,state.food-dt*.32);if(state.food===0)state.hp-=dt*2;let safe=fires.some(f=>distance(state,f.data)<8);if(safe&&state.food>0)state.hp=Math.min(100,state.hp+dt);spawn+=dt;if(night()&&spawn>5&&enemies.length<9){spawn=0;enemy()}for(let e of enemies){let f=fires.find(f=>distance(e.data,f.data)<8),vx=f?e.data.x-f.data.x:state.x-e.data.x,vz=f?e.data.z-f.data.z:state.z-e.data.z,l=Math.hypot(vx,vz)||1;e.data.x+=vx/l*1.15*dt;e.data.z+=vz/l*1.15*dt;e.obj.position.set(e.data.x,Math.sin(state.time*5)*.06,e.data.z);e.obj.lookAt(state.x,0,state.z);e.obj.rotateY(Math.PI);if(distance(state,e.data)<1.3)state.hp-=dt*14;if(!night())e.data.hp-=dt}for(let i=enemies.length-1;i>=0;i--)if(enemies[i].data.hp<=0){enemyGroup.remove(enemies[i].obj);enemies.splice(i,1)}if(noteTimer>0){noteTimer-=dt;if(noteTimer<=0)$('#note').textContent=''}saveTimer+=dt;if(saveTimer>5){saveTimer=0;save()}if(state.hp<=0){state.hp=0;menu('НОЧЬ ПОБЕДИЛА','Собери ресурсы днём. Костёр отгоняет теней, а ягоды восстанавливают силы. Попробуй ещё раз.')}if(state.time>=450&&!state.won){state.won=true;menu('ТЫ ВЫЖИЛ!','Три ночи позади. Остров стал твоим домом. Можно продолжить исследование.')}}
-const dayColor=new THREE.Color(0x9ebfc1),nightColor=new THREE.Color(0x192938),sky=new THREE.Color();function draw(t){let phase=state.time%150,dark=phase<85?0:phase<100?(phase-85)/15:phase<140?1:(150-phase)/10;sky.copy(dayColor).lerp(nightColor,dark);renderer.setClearColor(sky);scene.fog.color.copy(sky);ambient.intensity=2.2-dark*1.55;sun.intensity=2-dark*1.8;camera.position.set(state.x,1.7+(active&&Math.hypot(stick.x,stick.y)>.1?Math.sin(t*.009)*.035:0),state.z);camera.rotation.set(pitch,yaw,0);for(let f of fires){f.obj.children[7].scale.setScalar(.95+Math.sin(t*.009)*.08)}let r=target();$('#target').textContent=r?({tree:'Дерево',rock:'Камень',berry:'Ягоды',enemy:'Лесная тень'}[r.data.type]+' · нажми действие'):'';$('#stats').innerHTML=`${night()?'☾ Ночь':'☀ День'} ${Math.floor(state.time/150)+1} · ${Math.ceil((night()?150:95)-phase)} с до ${night()?'рассвета':'ночи'}<br>♥ ${Math.ceil(state.hp)} &nbsp; Сытость ${Math.ceil(state.food)}<br><small>Дерево ${state.wood} · Камень ${state.stone} · Ягоды ${state.berries}</small>`;renderer.render(scene,camera)}function frame(t){requestAnimationFrame(frame);let dt=Math.min((t-timePrev)/1000,.05);timePrev=t;if(active)update(dt);draw(t)}requestAnimationFrame(frame);
-})();
+// Rare Ore — a Minecraft rarity trivia game.
+// Give a correct answer to each prompt; the rarer the answer, the more points.
+
+const ROUND_LEN = 7;
+const TIME_PER_Q = 25;
+
+const $ = id => document.getElementById(id);
+
+// ---------- answer parsing & matching ----------
+function norm(s) {
+  return s.toLowerCase()
+    .replace(/^minecraft:/, "")
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+function variants(s) {
+  const n = norm(s);
+  const out = new Set([n]);
+  const strip = n.replace(/^block of /, "").replace(/ block$/, "");
+  out.add(strip);
+  for (const v of [...out]) {
+    if (v.endsWith("es")) out.add(v.slice(0, -2));
+    if (v.endsWith("s")) out.add(v.slice(0, -1));
+    out.add(v.replace(/ /g, ""));
+  }
+  return [...out].filter(Boolean);
+}
+function parseAnswers(list) {
+  const seen = new Map();
+  for (const e of list) {
+    const [name, r, alias] = e.split("|");
+    const key = norm(name);
+    if (seen.has(key)) continue; // first entry wins
+    const keys = new Set();
+    for (const a of [name, ...(alias ? alias.split(",") : [])]) variants(a).forEach(v => keys.add(v));
+    seen.set(key, { name, rarity: Number(r), keys });
+  }
+  return [...seen.values()];
+}
+function lev(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function match(input, answers) {
+  const inVars = variants(input);
+  for (const a of answers) if (inVars.some(v => a.keys.has(v))) return a;
+  // forgive one typo on longer words
+  const n = norm(input);
+  if (n.length >= 5) {
+    for (const a of answers)
+      for (const k of a.keys) if (k.length >= 5 && lev(n, k) <= 1) return a;
+  }
+  return null;
+}
+
+// ---------- seeded random for daily mode ----------
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function shuffle(arr, rnd) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ---------- state ----------
+let state = null;
+let timerId = null;
+
+function show(screen) {
+  for (const s of document.querySelectorAll(".screen")) s.hidden = s.id !== screen;
+}
+
+function startRound(daily) {
+  const rnd = daily ? mulberry32([...todayKey()].reduce((h, c) => h * 31 + c.charCodeAt(0), 7)) : Math.random;
+  // Always include at least two "new blocks" prompts so recent updates show up.
+  const newer = shuffle(PROMPTS.filter(p => p.tag === "New blocks"), rnd).slice(0, 2);
+  const rest = shuffle(PROMPTS.filter(p => !newer.includes(p)), rnd).slice(0, ROUND_LEN - 2);
+  const prompts = shuffle([...newer, ...rest], rnd).map(p => ({ ...p, parsed: parseAnswers(p.answers) }));
+  state = { daily, prompts, i: 0, score: 0, results: [] };
+  show("play");
+  nextPrompt();
+}
+
+function nextPrompt() {
+  const p = state.prompts[state.i];
+  $("qnum").textContent = `${state.i + 1} / ${ROUND_LEN}`;
+  $("qtag").textContent = p.tag;
+  $("question").textContent = p.q;
+  $("score").textContent = state.score;
+  $("answer").value = "";
+  $("answer").disabled = false;
+  $("feedback").innerHTML = "";
+  $("reveal").hidden = true;
+  $("inputRow").hidden = false;
+  $("answer").focus();
+  state.left = TIME_PER_Q;
+  updateTimer();
+  clearInterval(timerId);
+  timerId = setInterval(() => {
+    state.left--;
+    updateTimer();
+    if (state.left <= 0) finishPrompt(null, true);
+  }, 1000);
+}
+
+function updateTimer() {
+  $("timer").textContent = state.left;
+  $("timebar").style.width = `${(state.left / TIME_PER_Q) * 100}%`;
+  $("timebar").classList.toggle("low", state.left <= 5);
+}
+
+function submit() {
+  const val = $("answer").value.trim();
+  if (!val) return;
+  const p = state.prompts[state.i];
+  const hit = match(val, p.parsed);
+  if (!hit) {
+    // wrong answers cost time, not the question
+    $("feedback").innerHTML = `<span class="bad">“${escapeHtml(val)}” doesn’t count. Try again!</span>`;
+    $("answer").value = "";
+    state.left = Math.max(1, state.left - 3);
+    updateTimer();
+    shake();
+    return;
+  }
+  finishPrompt(hit, false);
+}
+
+function finishPrompt(hit, timedOut) {
+  clearInterval(timerId);
+  const p = state.prompts[state.i];
+  const tier = hit ? TIERS[hit.rarity] : null;
+  const pts = tier ? tier.pts : 0;
+  state.score += pts;
+  state.results.push({ q: p.q, answer: hit ? hit.name : null, rarity: hit ? hit.rarity : 0, pts });
+  $("score").textContent = state.score;
+  $("answer").disabled = true;
+  $("inputRow").hidden = true;
+
+  let html = "";
+  if (hit) {
+    html += `<div class="tier" style="--c:${tier.color}"><div class="ore" style="--c:${tier.color}"></div>
+      <div><div class="tname">${tier.name} tier</div><div class="tans">${escapeHtml(hit.name)}</div></div>
+      <div class="tpts">+${pts}</div></div>`;
+  } else {
+    html += `<div class="tier miss"><div><div class="tname">${timedOut ? "Time’s up!" : "Skipped"}</div>
+      <div class="tans">No points this time</div></div><div class="tpts">+0</div></div>`;
+  }
+  const common = p.parsed.filter(a => a.rarity <= 2).slice(0, 5).map(a => a.name);
+  const rare = shuffle(p.parsed.filter(a => a.rarity >= 5), Math.random).slice(0, 5).map(a => a.name);
+  html += `<div class="examples">
+    ${common.length ? `<p><b>Everyone says:</b> ${common.map(escapeHtml).join(", ")}</p>` : ""}
+    ${rare.length ? `<p><b>Deep cuts:</b> ${rare.map(escapeHtml).join(", ")}</p>` : ""}
+    <p class="muted">${p.parsed.length} valid answers in total</p></div>`;
+  $("reveal").innerHTML = html + `<button id="nextBtn" class="btn">${state.i + 1 < ROUND_LEN ? "Next ▶" : "See results"}</button>`;
+  $("reveal").hidden = false;
+  $("nextBtn").onclick = advance;
+  $("nextBtn").focus();
+}
+
+function advance() {
+  state.i++;
+  if (state.i < ROUND_LEN) nextPrompt();
+  else endRound();
+}
+
+function rankFor(score) {
+  const max = ROUND_LEN * 100;
+  const r = score / max;
+  if (r >= 0.85) return "Ancient Debris Hunter";
+  if (r >= 0.7) return "Diamond Miner";
+  if (r >= 0.5) return "Gold Prospector";
+  if (r >= 0.3) return "Iron Digger";
+  if (r > 0) return "Cobble Collector";
+  return "Lost in the Caves";
+}
+
+function endRound() {
+  show("results");
+  const key = state.daily ? "rareore.best.daily" : "rareore.best";
+  const best = Math.max(state.score, Number(localStorage.getItem(key) || 0));
+  localStorage.setItem(key, best);
+  if (state.daily) localStorage.setItem("rareore.daily." + todayKey(), state.score);
+  $("final").textContent = state.score;
+  $("rank").textContent = rankFor(state.score);
+  $("best").textContent = `Best ${state.daily ? "daily " : ""}score: ${best} / ${ROUND_LEN * 100}`;
+  $("summary").innerHTML = state.results.map(r => {
+    const t = TIERS[r.rarity];
+    return `<li><span class="sq" style="background:${t ? t.color : "#333"}"></span>
+      <span class="sq-q">${escapeHtml(r.q)}</span>
+      <span class="sq-a">${r.answer ? escapeHtml(r.answer) : "—"}</span>
+      <span class="sq-p">${r.pts}</span></li>`;
+  }).join("");
+}
+
+function shareText() {
+  const squares = state.results.map(r => ["⬛", "🟫", "⬜", "🩶", "🟨", "🟦", "🟪"][r.rarity]).join("");
+  return `Rare Ore ${state.daily ? todayKey() : ""}\n${squares}\n${state.score}/${ROUND_LEN * 100} — ${rankFor(state.score)}`;
+}
+
+function shake() {
+  const el = $("answer");
+  el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake");
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- new blocks guide ----------
+function buildGuide() {
+  $("guideList").innerHTML = UPDATES.slice().reverse().map(u => `
+    <section class="upd">
+      <h3>${u.name} <small>${u.version} · ${u.year}${u.status !== "released" ? ` · <em>${u.status}</em>` : ""}</small></h3>
+      <div class="chips">${u.blocks.map(b => `<span class="chip">${escapeHtml(b.split("|")[0])}</span>`).join("")}</div>
+    </section>`).join("");
+}
+
+// ---------- wiring ----------
+$("playBtn").onclick = () => startRound(false);
+$("dailyBtn").onclick = () => startRound(true);
+$("guideBtn").onclick = () => show("guide");
+$("howBtn").onclick = () => show("how");
+for (const b of document.querySelectorAll("[data-home]")) b.onclick = () => { clearInterval(timerId); show("menu"); refreshMenu(); };
+$("againBtn").onclick = () => startRound(state.daily);
+$("shareBtn").onclick = async () => {
+  try { await navigator.clipboard.writeText(shareText()); $("shareBtn").textContent = "Copied!"; }
+  catch { prompt("Copy your result:", shareText()); }
+  setTimeout(() => ($("shareBtn").textContent = "Copy result"), 1500);
+};
+$("submitBtn").onclick = submit;
+$("skipBtn").onclick = () => finishPrompt(null, false);
+$("answer").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+
+function refreshMenu() {
+  const d = localStorage.getItem("rareore.daily." + todayKey());
+  $("dailyBtn").textContent = d !== null ? `Daily dig (today: ${d})` : "Daily dig";
+  $("menuBest").textContent = `Best: ${localStorage.getItem("rareore.best") || 0}`;
+}
+
+buildGuide();
+refreshMenu();
+show("menu");
