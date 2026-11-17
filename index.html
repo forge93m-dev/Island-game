@@ -48,13 +48,16 @@
   .bad { color:#ff7070; }
   .tier { display:flex; align-items:center; gap:14px; background:#000a; border:3px solid var(--c, #555); padding:12px; margin-bottom:12px; }
   .tier.miss { border-color:#555; }
-  .ore { width:48px; height:48px; flex:none; background:
-      linear-gradient(var(--c),var(--c)) 8px 10px/10px 10px no-repeat,
-      linear-gradient(var(--c),var(--c)) 28px 6px/8px 8px no-repeat,
-      linear-gradient(var(--c),var(--c)) 20px 26px/12px 10px no-repeat,
-      linear-gradient(var(--c),var(--c)) 6px 34px/8px 8px no-repeat,
-      linear-gradient(var(--c),var(--c)) 36px 32px/6px 8px no-repeat,
-      #707070; border:3px solid #333; image-rendering:pixelated; }
+  .worldwrap { position:relative; margin-bottom:16px; border:4px solid var(--edge); box-shadow:0 6px 0 #0006; }
+  #world { display:block; width:100%; image-rendering:pixelated; image-rendering:crisp-edges; background:#000; }
+  .mute { position:absolute; top:8px; right:34px; font-size:18px; background:rgba(0,0,0,.6); border:2px solid #000; color:#fff; cursor:pointer; padding:2px 6px; }
+  .tex { position:relative; width:48px; height:48px; flex:none; border:3px solid #000; background:#000; }
+  #summary .tex { width:26px; height:26px; border-width:2px; }
+  .tex img { position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; }
+  .tpts small { display:block; font-size:13px; font-weight:normal; color:var(--muted); text-align:right; }
+  #ores { text-align:center; line-height:2; }
+  .orechip { display:inline-flex; align-items:center; gap:4px; background:#000; padding:2px 8px 2px 30px; position:relative; margin:2px; font-size:14px; }
+  .orechip img { position:absolute; left:4px; width:20px; height:20px; image-rendering:pixelated; }
   .tname { font-weight:bold; font-size:20px; color:var(--c, var(--text)); }
   .tans { font-size:16px; }
   .tpts { flex:none !important; margin-left:auto; font-size:28px; font-weight:bold; }
@@ -64,7 +67,6 @@
   #best { text-align:center; }
   #summary { list-style:none; padding:0; margin:16px 0; }
   #summary li { display:flex; gap:8px; align-items:center; padding:6px 0; border-bottom:2px solid #0004; font-size:14px; }
-  .sq { width:18px; height:18px; flex:none; border:2px solid #000; }
   .sq-q { flex:2; color:var(--muted); }
   .sq-a { flex:1.4; }
   .sq-p { width:36px; text-align:right; font-weight:bold; }
@@ -75,13 +77,18 @@
   .upd em { color:#f5c542; }
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
   .chip { background:#000; border:2px solid #444; padding:3px 8px; font-size:13px; }
+  footer a { color:#9a8a7e; }
   footer { text-align:center; color:#6d6158; font-size:12px; margin-top:20px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>RARE <span>ORE</span></h1>
-  <p class="sub">The Minecraft trivia where the rarest correct answer wins.</p>
+  <p class="sub">Rare answers dig deeper. How far down can you go?</p>
+  <div class="worldwrap">
+    <canvas id="world"></canvas>
+    <button id="muteBtn" class="mute" title="Sound on/off">🔊</button>
+  </div>
 
   <!-- MENU -->
   <div id="menu" class="screen panel">
@@ -97,11 +104,13 @@
     <h2>How to play</h2>
     <p>Each round has <b>7 prompts</b> like “Name a hostile mob” or “Name a block added in 2026”.
        You have <b>25 seconds</b> for each.</p>
-    <p>Any correct answer scores, but <b>rare answers score more</b>. Saying “Zombie” is fine.
-       Saying “Bogged” is better. A wrong guess doesn’t end the prompt, it just costs 3 seconds.</p>
+    <p>Every correct answer swings your pickaxe and <b>breaks blocks straight down</b>.
+       Common answers break one or two blocks. <b>Rare answers dig much deeper.</b>
+       Saying “Zombie” is fine; saying “Bogged” is better. A wrong guess costs 3 seconds.</p>
+    <p>Deeper means rarer ores: coal, then iron, gold, diamond, and obsidian above the lava lake (72 blocks down).</p>
     <div class="tiers">
-      <div style="--c:#8b5a2b">Dirt · 10</div><div style="--c:#8a8a8a">Cobble · 25</div><div style="--c:#d8d8d8">Iron · 40</div>
-      <div style="--c:#f5c542">Gold · 60</div><div style="--c:#4ee6e0">Diamond · 80</div><div style="--c:#b26bff">Netherite · 100</div>
+      <div style="--c:#9b6a3b">Dirt · 1 block</div><div style="--c:#9a9a9a">Coal · 3</div><div style="--c:#e2c0a0">Iron · 4</div>
+      <div style="--c:#f5d742">Gold · 6</div><div style="--c:#5ef0ff">Diamond · 8</div><div style="--c:#b26bff">Obsidian · 10</div>
     </div>
     <p class="muted">Daily dig gives everyone the same 7 prompts for the day. Play is unlimited.</p>
     <button class="btn" data-home>◀ Back</button>
@@ -134,9 +143,10 @@
 
   <!-- RESULTS -->
   <div id="results" class="screen panel" hidden>
-    <p class="muted" style="text-align:center;margin:0">Final score</p>
+    <p class="muted" style="text-align:center;margin:0">Blocks dug</p>
     <p id="final" class="big"></p>
     <p id="rank"></p>
+    <p id="ores"></p>
     <p id="best" class="muted"></p>
     <ul id="summary"></ul>
     <div class="row">
@@ -146,9 +156,11 @@
     <button class="btn" data-home>◀ Menu</button>
   </div>
 
-  <footer>Fan-made trivia game. Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.</footer>
+  <footer>Fan-made trivia game. Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.<br>
+    Block textures from <a href="https://github.com/luanti-org/minetest_game">Minetest Game / Luanti</a>, CC BY-SA 3.0 (see textures/LICENSE.txt).</footer>
 </div>
 <script src="data.js"></script>
+<script src="dig.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

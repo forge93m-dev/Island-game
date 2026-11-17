@@ -96,6 +96,7 @@ function startRound(daily) {
   const rest = shuffle(PROMPTS.filter(p => !newer.includes(p)), rnd).slice(0, ROUND_LEN - 2);
   const prompts = shuffle([...newer, ...rest], rnd).map(p => ({ ...p, parsed: parseAnswers(p.answers) }));
   state = { daily, prompts, i: 0, score: 0, results: [] };
+  Dig.reset(Math.floor(rnd() * 1e9));
   show("play");
   nextPrompt();
 }
@@ -108,6 +109,7 @@ function nextPrompt() {
   $("score").textContent = state.score;
   $("answer").value = "";
   $("answer").disabled = false;
+  state.finished = false;
   $("feedback").innerHTML = "";
   $("reveal").hidden = true;
   $("inputRow").hidden = false;
@@ -140,6 +142,7 @@ function submit() {
     state.left = Math.max(1, state.left - 3);
     updateTimer();
     shake();
+    Dig.clink();
     return;
   }
   finishPrompt(hit, false);
@@ -149,6 +152,8 @@ function finishPrompt(hit, timedOut) {
   clearInterval(timerId);
   const p = state.prompts[state.i];
   const tier = hit ? TIERS[hit.rarity] : null;
+  if (state.finished) return;
+  state.finished = true;
   const pts = tier ? tier.pts : 0;
   state.score += pts;
   state.results.push({ q: p.q, answer: hit ? hit.name : null, rarity: hit ? hit.rarity : 0, pts });
@@ -158,9 +163,9 @@ function finishPrompt(hit, timedOut) {
 
   let html = "";
   if (hit) {
-    html += `<div class="tier" style="--c:${tier.color}"><div class="ore" style="--c:${tier.color}"></div>
+    html += `<div class="tier" style="--c:${tier.color}">${tierIcon(hit.rarity)}
       <div><div class="tname">${tier.name} tier</div><div class="tans">${escapeHtml(hit.name)}</div></div>
-      <div class="tpts">+${pts}</div></div>`;
+      <div class="tpts">+${pts}<small>⛏ ${tier.blocks} block${tier.blocks > 1 ? "s" : ""} down</small></div></div>`;
   } else {
     html += `<div class="tier miss"><div><div class="tname">${timedOut ? "Time’s up!" : "Skipped"}</div>
       <div class="tans">No points this time</div></div><div class="tpts">+0</div></div>`;
@@ -173,8 +178,20 @@ function finishPrompt(hit, timedOut) {
     <p class="muted">${p.parsed.length} valid answers in total</p></div>`;
   $("reveal").innerHTML = html + `<button id="nextBtn" class="btn">${state.i + 1 < ROUND_LEN ? "Next ▶" : "See results"}</button>`;
   $("reveal").hidden = false;
-  $("nextBtn").onclick = advance;
-  $("nextBtn").focus();
+  const btn = $("nextBtn");
+  btn.onclick = advance;
+  if (tier) {
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Digging…";
+    Dig.dig(tier.blocks).then(() => { btn.disabled = false; btn.textContent = label; btn.focus(); });
+  } else btn.focus();
+}
+
+const TIER_TEX = [null, ["dirt"], ["stone", "mineral_coal"], ["stone", "mineral_iron"],
+  ["stone", "mineral_gold"], ["stone", "mineral_diamond"], ["obsidian"]];
+function tierIcon(r) {
+  return `<div class="tex">${TIER_TEX[r].map(t => `<img src="textures/${t}.png" alt="">`).join("")}</div>`;
 }
 
 function advance() {
@@ -183,38 +200,41 @@ function advance() {
   else endRound();
 }
 
-function rankFor(score) {
-  const max = ROUND_LEN * 100;
-  const r = score / max;
-  if (r >= 0.85) return "Ancient Debris Hunter";
-  if (r >= 0.7) return "Diamond Miner";
-  if (r >= 0.5) return "Gold Prospector";
-  if (r >= 0.3) return "Iron Digger";
-  if (r > 0) return "Cobble Collector";
-  return "Lost in the Caves";
+function rankFor(depth) {
+  if (depth >= 60) return "Obsidian Breaker";
+  if (depth >= 45) return "Diamond Miner";
+  if (depth >= 30) return "Gold Prospector";
+  if (depth >= 15) return "Iron Digger";
+  if (depth > 0) return "Coal Scraper";
+  return "Still on the Grass";
 }
 
 function endRound() {
   show("results");
+  const depth = Dig.depth;
   const key = state.daily ? "rareore.best.daily" : "rareore.best";
-  const best = Math.max(state.score, Number(localStorage.getItem(key) || 0));
+  const best = Math.max(depth, Number(localStorage.getItem(key) || 0));
   localStorage.setItem(key, best);
-  if (state.daily) localStorage.setItem("rareore.daily." + todayKey(), state.score);
-  $("final").textContent = state.score;
-  $("rank").textContent = rankFor(state.score);
-  $("best").textContent = `Best ${state.daily ? "daily " : ""}score: ${best} / ${ROUND_LEN * 100}`;
+  if (state.daily) localStorage.setItem("rareore.daily." + todayKey(), depth);
+  $("final").textContent = depth;
+  $("rank").textContent = `${rankFor(depth)} · ${Dig.layer}`;
+  const ores = Object.entries(Dig.found);
+  $("ores").innerHTML = ores.length
+    ? "Ores found: " + ores.map(([o, n]) => `<span class="orechip"><img src="textures/stone.png"><img src="textures/mineral_${o}.png">${n}× ${Dig.ORE_NAMES[o]}</span>`).join(" ")
+    : "No ores found this time.";
+  $("best").textContent = `Points: ${state.score} · Best ${state.daily ? "daily " : ""}depth: ${best} blocks`;
   $("summary").innerHTML = state.results.map(r => {
     const t = TIERS[r.rarity];
-    return `<li><span class="sq" style="background:${t ? t.color : "#333"}"></span>
+    return `<li>${r.rarity ? tierIcon(r.rarity) : '<div class="tex"></div>'}
       <span class="sq-q">${escapeHtml(r.q)}</span>
       <span class="sq-a">${r.answer ? escapeHtml(r.answer) : "—"}</span>
-      <span class="sq-p">${r.pts}</span></li>`;
+      <span class="sq-p">${t ? "⛏" + t.blocks : "0"}</span></li>`;
   }).join("");
 }
 
 function shareText() {
   const squares = state.results.map(r => ["⬛", "🟫", "⬜", "🩶", "🟨", "🟦", "🟪"][r.rarity]).join("");
-  return `Rare Ore ${state.daily ? todayKey() : ""}\n${squares}\n${state.score}/${ROUND_LEN * 100} — ${rankFor(state.score)}`;
+  return `Rare Ore ${state.daily ? todayKey() : ""}\n${squares}\nDug ${Dig.depth} blocks deep (${Dig.layer}) — ${rankFor(Dig.depth)}`;
 }
 
 function shake() {
@@ -253,9 +273,13 @@ $("answer").addEventListener("keydown", e => { if (e.key === "Enter") { e.preven
 function refreshMenu() {
   const d = localStorage.getItem("rareore.daily." + todayKey());
   $("dailyBtn").textContent = d !== null ? `Daily dig (today: ${d})` : "Daily dig";
-  $("menuBest").textContent = `Best: ${localStorage.getItem("rareore.best") || 0}`;
+  $("menuBest").textContent = `Deepest dig: ${localStorage.getItem("rareore.best") || 0} blocks`;
 }
 
+Dig.init($("world"));
+$("muteBtn").textContent = Sound.muted ? "🔇" : "🔊";
+$("muteBtn").onclick = () => { $("muteBtn").textContent = Sound.toggle() ? "🔇" : "🔊"; };
+for (const b of document.querySelectorAll("[data-home]")) b.addEventListener("click", () => Dig.reset(1));
 buildGuide();
 refreshMenu();
 show("menu");

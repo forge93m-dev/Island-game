@@ -4,12 +4,12 @@
 
 const TIERS = [
   null,
-  { name: "Dirt",      pts: 10,  color: "#8b5a2b" },
-  { name: "Cobble",    pts: 25,  color: "#8a8a8a" },
-  { name: "Iron",      pts: 40,  color: "#d8d8d8" },
-  { name: "Gold",      pts: 60,  color: "#f5c542" },
-  { name: "Diamond",   pts: 80,  color: "#4ee6e0" },
-  { name: "Netherite", pts: 100, color: "#b26bff" },
+  { name: "Dirt",     pts: 10,  blocks: 1,  color: "#9b6a3b" },
+  { name: "Coal",     pts: 25,  blocks: 3,  color: "#9a9a9a" },
+  { name: "Iron",     pts: 40,  blocks: 4,  color: "#e2c0a0" },
+  { name: "Gold",     pts: 60,  blocks: 6,  color: "#f5d742" },
+  { name: "Diamond",  pts: 80,  blocks: 8,  color: "#5ef0ff" },
+  { name: "Obsidian", pts: 100, blocks: 10, color: "#b26bff" },
 ];
 
 // ---- Newest blocks, grouped by update (used for prompts + the guide panel) ----
